@@ -9,35 +9,39 @@ document.addEventListener('DOMContentLoaded', () => {
 
   let barChart, lineChart, pieChart;
 
+  // Web worker for data processing
+  let dataWorker;
+
   csvFileInput.addEventListener('change', (event) => {
     const file = event.target.files[0];
     if (file) {
       const reader = new FileReader();
       reader.onload = (e) => {
         const text = e.target.result;
-        processCSV(text);
+        if (dataWorker) {
+          dataWorker.terminate();
+        }
+        dataWorker = new Worker('dataWorker.js');
+        dataWorker.postMessage(text);
+        dataWorker.onmessage = (event) => {
+          const { headers: h, rawData: rd, numericColumns: nc } = event.data;
+          headers = h;
+          rawData = rd;
+          numericColumns = nc;
+          renderFilters();
+          renderStats();
+          renderCharts();
+          updatePagination();
+          loadLayout();
+          addDragAndDrop();
+        };
       };
       reader.readAsText(file);
     }
   });
 
   function processCSV(text) {
-    const lines = text.trim().split('\n');
-    headers = lines[0].split(',').map(h => h.trim());
-    rawData = lines.slice(1).map(line => {
-      const values = line.split(',').map(v => v.trim());
-      const obj = {};
-      headers.forEach((header, i) => {
-        obj[header] = isNaN(values[i]) ? values[i] : parseFloat(values[i]);
-      });
-      return obj;
-    });
-
-    numericColumns = headers.filter(h => typeof rawData[0][h] === 'number');
-
-    renderFilters();
-    renderStats();
-    renderCharts();
+    // This function is now handled by the web worker
   }
 
   function renderFilters() {
@@ -80,6 +84,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         renderStats();
         renderCharts();
+        saveLayout();
       });
 
       inputMax.addEventListener('change', () => {
@@ -88,6 +93,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         renderStats();
         renderCharts();
+        saveLayout();
       });
 
       div.appendChild(label);
@@ -130,6 +136,8 @@ document.addEventListener('DOMContentLoaded', () => {
       const values = data.map(d => d[col]);
       const mean = (values.reduce((a, b) => a + b, 0) / values.length) || 0;
       const median = calculateMedian(values);
+      const stddev = calculateStdDev(values, mean);
+      const variance = stddev * stddev;
       const statDiv = document.createElement('div');
       statDiv.className = 'bg-white p-4 rounded shadow';
 
@@ -137,6 +145,8 @@ document.addEventListener('DOMContentLoaded', () => {
         <h4 class="font-semibold mb-2">${col}</h4>
         <p>Mean: ${mean.toFixed(2)}</p>
         <p>Median: ${median.toFixed(2)}</p>
+        <p>Standard Deviation: ${stddev.toFixed(2)}</p>
+        <p>Variance: ${variance.toFixed(2)}</p>
       `;
       statsContainer.appendChild(statDiv);
     });
@@ -189,6 +199,12 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
+  function calculateStdDev(arr, mean) {
+    const n = arr.length;
+    const variance = arr.reduce((acc, val) => acc + (val - mean) ** 2, 0) / n;
+    return Math.sqrt(variance);
+  }
+
   function calculateMedian(arr) {
     const sorted = arr.slice().sort((a, b) => a - b);
     const mid = Math.floor(sorted.length / 2);
@@ -216,113 +232,60 @@ document.addEventListener('DOMContentLoaded', () => {
     return numerator / Math.sqrt(denomX * denomY);
   }
 
-  function renderCharts() {
+  // Pagination state
+  const pagination = {
+    currentPage: 1,
+    pageSize: 50,
+  };
+
+  function updatePagination() {
     const data = getFilteredData();
-    if (data.length === 0) {
-      clearCharts();
-      return;
+    const totalPages = Math.ceil(data.length / pagination.pageSize);
+    if (pagination.currentPage > totalPages) {
+      pagination.currentPage = totalPages || 1;
     }
+    renderPaginationControls(totalPages);
+    renderCharts();
+  }
 
-    // Prepare data for charts
-    // For simplicity, use first numeric column for bar and line charts
-    // Use categorical column (first non-numeric) for labels if available
-    const numericCol = numericColumns[0];
-    const labels = data.map((d, i) => i + 1);
-    const values = data.map(d => d[numericCol]);
-
-    // Bar Chart
-    if (barChart) {
-      barChart.destroy();
+  function renderPaginationControls(totalPages) {
+    let paginationContainer = document.getElementById('paginationControls');
+    if (!paginationContainer) {
+      paginationContainer = document.createElement('div');
+      paginationContainer.id = 'paginationControls';
+      paginationContainer.className = 'flex justify-center space-x-2 mt-4';
+      document.querySelector('main').appendChild(paginationContainer);
     }
-    const barCtx = document.getElementById('barChart').getContext('2d');
-    barChart = new Chart(barCtx, {
-      type: 'bar',
-      data: {
-        labels,
-        datasets: [{
-          label: numericCol,
-          data: values,
-          backgroundColor: 'rgba(59, 130, 246, 0.7)',
-          borderColor: 'rgba(59, 130, 246, 1)',
-          borderWidth: 1
-        }]
-      },
-      options: {
-        responsive: true,
-        plugins: {
-          legend: { display: true },
-          tooltip: { enabled: true }
-        },
-        scales: {
-          y: { beginAtZero: true }
-        }
+    paginationContainer.innerHTML = '';
+
+    const prevBtn = document.createElement('button');
+    prevBtn.textContent = 'Previous';
+    prevBtn.disabled = pagination.currentPage === 1;
+    prevBtn.className = 'px-3 py-1 bg-gray-300 rounded disabled:opacity-50';
+    prevBtn.addEventListener('click', () => {
+      if (pagination.currentPage > 1) {
+        pagination.currentPage--;
+        updatePagination();
       }
     });
+    paginationContainer.appendChild(prevBtn);
 
-    // Line Chart
-    if (lineChart) {
-      lineChart.destroy();
-    }
-    const lineCtx = document.getElementById('lineChart').getContext('2d');
-    lineChart = new Chart(lineCtx, {
-      type: 'line',
-      data: {
-        labels,
-        datasets: [{
-          label: numericCol,
-          data: values,
-          fill: false,
-          borderColor: 'rgba(16, 185, 129, 1)',
-          tension: 0.1
-        }]
-      },
-      options: {
-        responsive: true,
-        plugins: {
-          legend: { display: true },
-          tooltip: { enabled: true }
-        },
-        scales: {
-          y: { beginAtZero: true }
-        }
+    const pageInfo = document.createElement('span');
+    pageInfo.textContent = `Page ${pagination.currentPage} of ${totalPages}`;
+    pageInfo.className = 'px-3 py-1';
+    paginationContainer.appendChild(pageInfo);
+
+    const nextBtn = document.createElement('button');
+    nextBtn.textContent = 'Next';
+    nextBtn.disabled = pagination.currentPage === totalPages;
+    nextBtn.className = 'px-3 py-1 bg-gray-300 rounded disabled:opacity-50';
+    nextBtn.addEventListener('click', () => {
+      if (pagination.currentPage < totalPages) {
+        pagination.currentPage++;
+        updatePagination();
       }
     });
-
-    // Pie Chart
-    if (pieChart) {
-      pieChart.destroy();
-    }
-    const pieCtx = document.getElementById('pieChart').getContext('2d');
-
-    // For pie chart, use first categorical column or first column if none categorical
-    const categoricalCol = headers.find(h => typeof rawData[0][h] === 'string') || headers[0];
-    const pieDataMap = {};
-    data.forEach(d => {
-      const key = d[categoricalCol];
-      pieDataMap[key] = (pieDataMap[key] || 0) + 1;
-    });
-    const pieLabels = Object.keys(pieDataMap);
-    const pieValues = Object.values(pieDataMap);
-
-    pieChart = new Chart(pieCtx, {
-      type: 'pie',
-      data: {
-        labels: pieLabels,
-        datasets: [{
-          label: categoricalCol,
-          data: pieValues,
-          backgroundColor: pieLabels.map(() => getRandomColor()),
-          borderWidth: 1
-        }]
-      },
-      options: {
-        responsive: true,
-        plugins: {
-          legend: { position: 'right' },
-          tooltip: { enabled: true }
-        }
-      }
-    });
+    paginationContainer.appendChild(nextBtn);
   }
 
   function clearCharts() {
@@ -346,4 +309,183 @@ document.addEventListener('DOMContentLoaded', () => {
     const b = Math.floor(Math.random() * 200) + 30;
     return `rgba(${r},${g},${b},0.7)`;
   }
+
+  // Export filtered data as CSV
+  const exportCsvBtn = document.getElementById('exportCsvBtn');
+  exportCsvBtn.addEventListener('click', () => {
+    const data = getFilteredData();
+    if (data.length === 0) {
+      alert('No data to export.');
+      return;
+    }
+    const csvContent = convertToCSV(data);
+    downloadFile(csvContent, 'datalexis_export.csv', 'text/csv');
+  });
+
+  // Export filtered data as PDF (simple text-based)
+  const exportPdfBtn = document.getElementById('exportPdfBtn');
+  exportPdfBtn.addEventListener('click', () => {
+    const data = getFilteredData();
+    if (data.length === 0) {
+      alert('No data to export.');
+      return;
+    }
+    const pdfContent = convertToPDFText(data);
+    downloadFile(pdfContent, 'datalexis_export.txt', 'text/plain');
+  });
+
+  // Theme toggle
+  const themeToggleBtn = document.getElementById('themeToggleBtn');
+  themeToggleBtn.addEventListener('click', () => {
+    document.documentElement.classList.toggle('dark');
+  });
+
+  function convertToCSV(data) {
+    if (data.length === 0) return '';
+    const keys = Object.keys(data[0]);
+    const lines = data.map(row => keys.map(k => `"${row[k]}"`).join(','));
+    return keys.join(',') + '\n' + lines.join('\n');
+  }
+
+  function convertToPDFText(data) {
+    if (data.length === 0) return '';
+    const keys = Object.keys(data[0]);
+    let text = keys.join('\t') + '\n';
+    data.forEach(row => {
+      text += keys.map(k => row[k]).join('\t') + '\n';
+    });
+    return text;
+  }
+
+  function downloadFile(content, filename, mimeType) {
+    const blob = new Blob([content], { type: mimeType });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  // Save layout preferences to localStorage
+  function saveLayout() {
+    const statsContainer = document.getElementById('stats');
+    const chartsContainer = document.getElementById('chartsContainer');
+
+    const statsOrder = Array.from(statsContainer.children).map(child => child.textContent.trim());
+    const chartsOrder = Array.from(chartsContainer.children).map(child => child.id);
+
+    const layout = {
+      statsOrder,
+      chartsOrder
+    };
+    localStorage.setItem('datalexis_layout', JSON.stringify(layout));
+  }
+
+  // Load layout preferences from localStorage
+  function loadLayout() {
+    const layoutStr = localStorage.getItem('datalexis_layout');
+    if (!layoutStr) return;
+
+    const layout = JSON.parse(layoutStr);
+    const statsContainer = document.getElementById('stats');
+    const chartsContainer = document.getElementById('chartsContainer');
+
+    // Reorder stats
+    if (layout.statsOrder) {
+      const statsMap = {};
+      Array.from(statsContainer.children).forEach(child => {
+        statsMap[child.textContent.trim()] = child;
+      });
+      layout.statsOrder.forEach(text => {
+        if (statsMap[text]) {
+          statsContainer.appendChild(statsMap[text]);
+        }
+      });
+    }
+
+    // Reorder charts
+    if (layout.chartsOrder) {
+      const chartsMap = {};
+      Array.from(chartsContainer.children).forEach(child => {
+        chartsMap[child.id] = child;
+      });
+      layout.chartsOrder.forEach(id => {
+        if (chartsMap[id]) {
+          chartsContainer.appendChild(chartsMap[id]);
+        }
+      });
+    }
+  }
+
+  // Drag and drop handlers
+  function addDragAndDrop() {
+    const statsContainer = document.getElementById('stats');
+    const chartsContainer = document.getElementById('chartsContainer');
+
+    let dragSrcEl = null;
+
+    function handleDragStart(e) {
+      dragSrcEl = this;
+      e.dataTransfer.effectAllowed = 'move';
+      e.dataTransfer.setData('text/html', this.outerHTML);
+      this.classList.add('opacity-50');
+    }
+
+    function handleDragOver(e) {
+      if (e.preventDefault) {
+        e.preventDefault();
+      }
+      e.dataTransfer.dropEffect = 'move';
+      return false;
+    }
+
+    function handleDragEnter() {
+      this.classList.add('border-4', 'border-indigo-500');
+    }
+
+    function handleDragLeave() {
+      this.classList.remove('border-4', 'border-indigo-500');
+    }
+
+    function handleDrop(e) {
+      if (e.stopPropagation) {
+        e.stopPropagation();
+      }
+      if (dragSrcEl !== this) {
+        this.parentNode.removeChild(dragSrcEl);
+        const dropHTML = e.dataTransfer.getData('text/html');
+        this.insertAdjacentHTML('beforebegin', dropHTML);
+        const dropElem = this.previousSibling;
+        addDnDHandlers(dropElem);
+        saveLayout();
+      }
+      this.classList.remove('border-4', 'border-indigo-500');
+      return false;
+    }
+
+    function handleDragEnd() {
+      this.classList.remove('opacity-50');
+      const items = [...statsContainer.children, ...chartsContainer.children];
+      items.forEach(item => item.classList.remove('border-4', 'border-indigo-500'));
+    }
+
+    function addDnDHandlers(elem) {
+      elem.addEventListener('dragstart', handleDragStart, false);
+      elem.addEventListener('dragenter', handleDragEnter, false);
+      elem.addEventListener('dragover', handleDragOver, false);
+      elem.addEventListener('dragleave', handleDragLeave, false);
+      elem.addEventListener('drop', handleDrop, false);
+      elem.addEventListener('dragend', handleDragEnd, false);
+    }
+
+    Array.from(statsContainer.children).forEach(addDnDHandlers);
+    Array.from(chartsContainer.children).forEach(addDnDHandlers);
+  }
+
+  // Initialize drag and drop and load layout on DOMContentLoaded
+  document.addEventListener('DOMContentLoaded', () => {
+    loadLayout();
+    addDragAndDrop();
+  });
 });
