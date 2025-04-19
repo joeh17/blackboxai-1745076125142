@@ -12,6 +12,15 @@ document.addEventListener('DOMContentLoaded', () => {
   // Web worker for data processing
   let dataWorker;
 
+  // Debounce utility function
+  function debounce(func, wait) {
+    let timeout;
+    return function(...args) {
+      clearTimeout(timeout);
+      timeout = setTimeout(() => func.apply(this, args), wait);
+    };
+  }
+
   csvFileInput.addEventListener('change', (event) => {
     const file = event.target.files[0];
     if (file) {
@@ -78,23 +87,24 @@ document.addEventListener('DOMContentLoaded', () => {
       inputMax.max = max;
       inputMax.className = 'w-20 p-1 border border-gray-300 rounded';
 
-      inputMin.addEventListener('change', () => {
+      // Debounced event listeners for inputs
+      inputMin.addEventListener('change', debounce(() => {
         if (parseFloat(inputMin.value) > parseFloat(inputMax.value)) {
           inputMin.value = inputMax.value;
         }
         renderStats();
         renderCharts();
         saveLayout();
-      });
+      }, 300));
 
-      inputMax.addEventListener('change', () => {
+      inputMax.addEventListener('change', debounce(() => {
         if (parseFloat(inputMax.value) < parseFloat(inputMin.value)) {
           inputMax.value = inputMin.value;
         }
         renderStats();
         renderCharts();
         saveLayout();
-      });
+      }, 300));
 
       div.appendChild(label);
       div.appendChild(inputMin);
