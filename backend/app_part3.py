@@ -1,4 +1,5 @@
 from backend.app_part1 import app, db, token_required, request, jsonify
+from backend.app_part2 import DataFile
 
 # Upload CSV data endpoint
 @app.route('/api/data/upload', methods=['POST'])
