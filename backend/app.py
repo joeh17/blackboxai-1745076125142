@@ -151,4 +151,5 @@ def linear_regression(current_user):
     return jsonify({'message': 'Analytics endpoint - to be implemented'})
 
 if __name__ == '__main__':
-    app.run(debug=True)
+    # Run backend on port 5000
+    app.run(debug=True, port=5000)
