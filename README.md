@@ -1,4 +1,4 @@
-# Data Analysis Dashboard App
+# DataLexis
 
 This is a data analysis dashboard web app inspired by Microsoft Power BI. It allows you to upload CSV files, view statistical summaries, and interactive charts.
 
@@ -14,9 +14,9 @@ python3 -m http.server 8000
 
 3. Open your web browser and go to:
 
-[http://localhost:8000](http://localhost:8000)
+[http://localhost:8000/landing.html](http://localhost:8000/landing.html)
 
-4. The app will load. Use the "Upload CSV File" control to load your data and explore the dashboard.
+4. The landing page will load. Click "Enter Dashboard" to access the main app.
 
 ## Features
 
