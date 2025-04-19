@@ -6,17 +6,29 @@ This is a data analysis dashboard web app inspired by Microsoft Power BI. It all
 
 1. Make sure you have Python 3 installed.
 
-2. Start a local HTTP server in the project directory:
+2. Install backend dependencies:
+
+```bash
+pip install -r backend/requirements.txt
+```
+
+3. Run the backend server:
+
+```bash
+python3 backend/app.py
+```
+
+4. Start a local HTTP server for the frontend in the project directory:
 
 ```bash
 python3 -m http.server 8000
 ```
 
-3. Open your web browser and go to:
+5. Open your web browser and go to:
 
 [http://localhost:8000/landing.html](http://localhost:8000/landing.html)
 
-4. The landing page will load. Click "Enter Dashboard" to access the main app.
+6. The landing page will load. Click "Enter Dashboard" to access the main app.
 
 ## Features
 
