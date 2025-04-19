@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Login - DataLexis</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css" />
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    body {
+      font-family: 'Inter', sans-serif;
+      background: linear-gradient(135deg, #4f46e5, #3b82f6);
+      min-height: 100vh;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      color: white;
+    }
+  </style>
+</head>
+<body>
+  <div class="bg-white rounded-lg shadow-lg p-8 max-w-md w-full text-center text-gray-800">
+    <h1 class="text-3xl font-bold mb-6">DataLexis Login</h1>
+    <form id="loginForm" class="space-y-4" aria-label="Login form">
+      <div>
+        <label for="username" class="block text-left font-semibold mb-1">Username</label>
+        <input type="text" id="username" name="username" required class="w-full p-2 border border-gray-300 rounded" aria-required="true" />
+      </div>
+      <div>
+        <label for="password" class="block text-left font-semibold mb-1">Password</label>
+        <input type="password" id="password" name="password" required class="w-full p-2 border border-gray-300 rounded" aria-required="true" />
+      </div>
+      <button type="submit" class="w-full bg-indigo-600 text-white py-2 rounded hover:bg-indigo-700 transition">Login</button>
+    </form>
+    <p id="errorMsg" class="text-red-600 mt-4 hidden" role="alert"></p>
+  </div>
+
+  <script>
+    const loginForm = document.getElementById('loginForm');
+    const errorMsg = document.getElementById('errorMsg');
+
+    function generateFakeJWT(username) {
+      // Simple base64 encoded token with username and expiry (1 hour)
+      const header = btoa(JSON.stringify({ alg: "HS256", typ: "JWT" }));
+      const payload = btoa(JSON.stringify({ sub: username, exp: Date.now() + 3600 * 1000 }));
+      const signature = btoa("signature"); // fake signature
+      return `${header}.${payload}.${signature}`;
+    }
+
+    loginForm.addEventListener('submit', (e) => {
+      e.preventDefault();
+      const username = loginForm.username.value.trim();
+      const password = loginForm.password.value.trim();
+
+      // Simple hardcoded authentication for demo purposes
+      if (username === 'admin' && password === 'password') {
+        const token = generateFakeJWT(username);
+        localStorage.setItem('datalexis_token', token);
+        window.location.href = 'landing.html';
+      } else {
+        errorMsg.textContent = 'Invalid username or password.';
+        errorMsg.classList.remove('hidden');
+      }
+    });
+
+    // Check token on page load
+    window.addEventListener('load', () => {
+      const token = localStorage.getItem('datalexis_token');
+      if (token) {
+        const payload = JSON.parse(atob(token.split('.')[1]));
+        if (payload.exp > Date.now()) {
+          // Token valid, redirect to landing page if on login page
+          if (window.location.pathname.endsWith('login.html')) {
+            window.location.href = 'landing.html';
+          }
+        } else {
+          localStorage.removeItem('datalexis_token');
+        }
+      }
+    });
+  </script>
+</body>
+</html>
